@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import pandas as pd
 import os
 import time
@@ -6,6 +9,8 @@ from matplotlib.animation import FuncAnimation
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from datetime import datetime
+from threading import Thread, Lock
+import numpy as np
 
 # ------------------------------------------------------
 
@@ -22,29 +27,37 @@ curr_log = None
 # global data storage
 data = {'TURBO1': [], 'TURBO2': [], 'TURBO3': []}
 timestamps = []
+lock = Lock()
 
 
 ### class for handling changes in log file directory (if change in log file, new data is added)
 class LogFileHandler(FileSystemEventHandler):
-    def on_log_modified(self, event):
-        global curr_log, data
+    def on_modified(self, event):
+        global curr_log, data, timestamps
         if event.src_path.endswith('log'):
             if curr_log is None or event.src_path != curr_log:
                 curr_log = event.src_path
-                data = {'TURBO1': [], 'TURBO2': [], 'TURBO3': []}
 
             
             # new line from log file
-            with open(curr_log, 'r') as f:
-                log_df = pd.read_csv(curr_log, skipinitialspace= True, encoding= "ISO-8859-1", delimiter= '\t', header = 0)
-                log_df = log_df[~log_df.apply(lambda row:row.tolist() == log_df.columns.tolist(), axis= 1)]
+            with lock:
+                with open(curr_log, 'r') as f:
+                    log_df = pd.read_csv(curr_log, skipinitialspace= True, encoding= "ISO-8859-1", delimiter= '\t', header = 0)
+                    log_df = log_df[~log_df.apply(lambda row:row.loc['Date'] == 'Date', axis= 1)]
 
-                # update global data with changes
-                data['TURBO1'].extend(log_df['TURBO1_CURR_R [A]'].tolist())
-                data['TURBO2'].extend(log_df['TURBO2_CURR_R [A]'].tolist())
-                data['TURBO3'].extend(log_df['TURBO3_CURR_R [A]'].tolist())
-                timestamps.extend(pd.to_datetime(log_df['Date']).to_list())
-    
+                    # update global data with changes
+                    data['TURBO1'].extend(log_df['TURBO1_CURR_R [A]'].tolist())
+                    data['TURBO2'].extend(log_df['TURBO2_CURR_R [A]'].tolist())
+                    data['TURBO3'].extend(log_df['TURBO3_CURR_R [A]'].tolist())
+                    timestamps.extend(pd.to_datetime(log_df['Date']).to_list())
+        
+                    # sort
+                    sort_ind = sorted(range(len(timestamps)), key=lambda k: timestamps[k])
+                    timestamps = [timestamps[i] for i in sort_ind]
+                    data['TURBO1'] = [data['TURBO1'][i] for i in sort_ind]
+                    data['TURBO2'] = [data['TURBO2'][i] for i in sort_ind]
+                    data['TURBO3'] = [data['TURBO3'][i] for i in sort_ind]
+
 
 def load_prev_data():
     global data, timestamps
@@ -58,33 +71,46 @@ def load_prev_data():
 
         if log_date >= start_date: # load from user-defined start date
             log_df = pd.read_csv(os.path.join(log_dir, log_file), skipinitialspace= True, encoding= "ISO-8859-1", delimiter= '\t', header = 0)
-            log_df = log_df[~log_df.apply(lambda row:row.tolist() == log_df.columns.tolist(), axis= 1)]
+            log_df = log_df[~log_df.apply(lambda row:row.loc['Date'] == 'Date', axis= 1)]
             data['TURBO1'].extend(log_df['TURBO1_CURR_R [A]'].tolist())
             data['TURBO2'].extend(log_df['TURBO2_CURR_R [A]'].tolist())
             data['TURBO3'].extend(log_df['TURBO3_CURR_R [A]'].tolist())
             timestamps.extend(pd.to_datetime(log_df['Date']).to_list())
 
+            # sort
+            sort_ind = sorted(range(len(timestamps)), key=lambda k: timestamps[k])
+            timestamps = [timestamps[i] for i in sort_ind]
+            data['TURBO1'] = [data['TURBO1'][i] for i in sort_ind]
+            data['TURBO2'] = [data['TURBO2'][i] for i in sort_ind]
+            data['TURBO3'] = [data['TURBO3'][i] for i in sort_ind]
+
 def monitor_log_files():
 
-    Observer().schedule(LogFileHandler(), log_dir, recursive= False)
-    Observer().start()
+    observer = Observer()
+    observer.schedule(LogFileHandler(), log_dir, recursive= False)
+    observer.start()
 
     try:
         while True:
-            time.sleep(1)
+            time.sleep(2)
     except KeyboardInterrupt:
-        Observer().stop()
-    Observer().join()
+        observer.stop()
+    observer.join()
 
 def animate_plot(i):
-    plt.cla()
-    plt.plot(timestamps, data['TURBO1'], label= 'TURBO1_CURR_R [A]')
-    plt.plot(timestamps, data['TURBO2'], label= 'TURBO2_CURR_R [A]')
-    plt.plot(timestamps, data['TURBO3'], label= 'TURBO3_CURR_R [A]')
-    plt.legend(loc= 'upper left')
-    plt.xlabel('Time')
-    plt.ylabel('Current [A]')
-    plt.tight_layout()
+    with lock:
+        dat_turb1 = [float(x) for x in data['TURBO1']]
+        dat_turb2 = [float(x) for x in data['TURBO2']]
+        dat_turb3 = [float(x) for x in data['TURBO3']]
+        plt.cla()
+        plt.plot(timestamps, dat_turb1, label= 'TURBO1_CURR_R [A]')
+        plt.plot(timestamps, dat_turb2, label= 'TURBO2_CURR_R [A]')
+        plt.plot(timestamps, dat_turb3, label= 'TURBO3_CURR_R [A]')
+        plt.legend()
+        plt.xlabel('Time')
+        plt.ylabel('Current [A]')
+        plt.grid(True)
+        plt.tight_layout()
 
 
 def main():
@@ -95,13 +121,12 @@ def main():
     load_prev_data()
 
     # start monitoring in specific thread
-    from threading import Thread
     monitor_thread = Thread(target= monitor_log_files)
     monitor_thread.daemon = True
     monitor_thread.start()
 
     # plot in real-time
-    anim = FuncAnimation(plt.gcf(), animate_plot, interval= 60000)
+    anim = FuncAnimation(plt.gcf(), animate_plot, interval= 5000)
     plt.show()
 
 
