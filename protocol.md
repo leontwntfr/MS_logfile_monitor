@@ -2,6 +2,8 @@
 
 > Aim: Code a small script for a tool that monitors the log files of the mass spectrometers in real-time.
 
+-------------------------
+
 ### September 3, 2024
 
 > First aim: Start writing the script.
@@ -11,6 +13,8 @@ I implemented all basic functions and code needed for the log file monitor. The 
 - some general quality improvements
 
 Up until now, the basic functions are generally working. However, I am working on handling the header lines repeating themselves in log files.
+
+-------------------------
 
 ### September 4, 2024
 
@@ -31,3 +35,29 @@ I tested the real-time aspect by manually removing and readding line to a logfil
 I found that the name of the first function in the class has to be changed for it to be recognized by watchdog. Renaming fixed the issue.
 
 This marks the first completely working version of the MS logfile monitor. Next, I want to implement argparse integration.
+
+-------------------------
+
+### September 5, 2024
+
+> First aim: Implement argparse integration into the script.
+
+I added a function to handle the arparse arguments for the start date (`--start-date`) and log file directory (`--log-dir`; optional, this directory by default). The arguments are then retrieved in the main function and passed to the functions associated with the arguments.
+
+> Second aim: Figure out how to implement automatic package installing for users and how to do a proper github release.
+
+I created a text file `dependencies.txt` listing the packages that are additionally needed to run the script. By using `pip install -r dependencies.txt` the user can automatically fetch and install these packages.
+
+I also created a readme file `README.md` providing a description, the dependencies as well as and installation and usage guide for a first final github release. 
+
+For the release, I created an additional branch `private-branch`.
+```
+git checkout -b private-branch
+```
+This branch will be used to store the files that should not be accessible to users (such as this protocol). To store files in the different places (`main` and `private-branch`), I can switch between the using the following commands and then commit accordingly.
+```
+git checkout private-branch
+git checkout main
+```
+
+This marks the first release of this script. I will create the release on the GitHub page. Then, I can send the link to Liam.
