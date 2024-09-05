@@ -15,7 +15,7 @@ This script requires Python 3.7+ and the following packages (see installation se
 1. Clone this repository:
 
 ```
-git clone https://github.com/yourusername/MS_logfile_monitor.git
+git clone https://github.com/leontwntfr/MS_logfile_monitor.git
 cd MS_logfile_monitor
 ```
 
