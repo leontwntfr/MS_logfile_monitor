@@ -10,14 +10,18 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from datetime import datetime
 from threading import Thread, Lock
-import numpy as np
+import argparse
 
 # ------------------------------------------------------
 
-# directory to log files to monitor (user-defined)
-log_dir = '.'
-# start date from when data is shown
-start_date = datetime.strptime('2024-08-01', '%Y-%m-%d')
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Log File Monitor and Plotter")
+    
+    # Add arguments for start date and log directory
+    parser.add_argument('--start-date', type=str, required=True, help="Start date for filtering logs (format: YYYY-MM-DD)")
+    parser.add_argument('--log-dir', type=str, default='.', help="Directory where log files are located (default is current directory)")
+
+    return parser.parse_args()
 
 # ------------------------------------------------------
 
@@ -50,16 +54,8 @@ class LogFileHandler(FileSystemEventHandler):
                     data['TURBO2'].extend(log_df['TURBO2_CURR_R [A]'].tolist())
                     data['TURBO3'].extend(log_df['TURBO3_CURR_R [A]'].tolist())
                     timestamps.extend(pd.to_datetime(log_df['Date']).to_list())
-        
-                    # sort
-                    sort_ind = sorted(range(len(timestamps)), key=lambda k: timestamps[k])
-                    timestamps = [timestamps[i] for i in sort_ind]
-                    data['TURBO1'] = [data['TURBO1'][i] for i in sort_ind]
-                    data['TURBO2'] = [data['TURBO2'][i] for i in sort_ind]
-                    data['TURBO3'] = [data['TURBO3'][i] for i in sort_ind]
 
-
-def load_prev_data():
+def load_prev_data(log_dir, start_date):
     global data, timestamps
     # get sorted log file list
     log_file_list = sorted([file for file in os.listdir(log_dir) if file.endswith('.log')])
@@ -77,14 +73,7 @@ def load_prev_data():
             data['TURBO3'].extend(log_df['TURBO3_CURR_R [A]'].tolist())
             timestamps.extend(pd.to_datetime(log_df['Date']).to_list())
 
-            # sort
-            sort_ind = sorted(range(len(timestamps)), key=lambda k: timestamps[k])
-            timestamps = [timestamps[i] for i in sort_ind]
-            data['TURBO1'] = [data['TURBO1'][i] for i in sort_ind]
-            data['TURBO2'] = [data['TURBO2'][i] for i in sort_ind]
-            data['TURBO3'] = [data['TURBO3'][i] for i in sort_ind]
-
-def monitor_log_files():
+def monitor_log_files(log_dir):
 
     observer = Observer()
     observer.schedule(LogFileHandler(), log_dir, recursive= False)
@@ -92,7 +81,7 @@ def monitor_log_files():
 
     try:
         while True:
-            time.sleep(2)
+            time.sleep(10)
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
@@ -115,18 +104,28 @@ def animate_plot(i):
 
 def main():
     
+    # parse command-line arguments
+    args = parse_arguments()
+
+    # convert the start-date string into a datetime object
+    start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
+
+    # use the specified log directory or default to current directory
+    log_dir = args.log_dir
+
+    # use seaborn style
     plt.style.use('seaborn')
 
     # load previous data
-    load_prev_data()
+    load_prev_data(log_dir, start_date)
 
     # start monitoring in specific thread
-    monitor_thread = Thread(target= monitor_log_files)
+    monitor_thread = Thread(target= monitor_log_files, args=(log_dir,))
     monitor_thread.daemon = True
     monitor_thread.start()
 
     # plot in real-time
-    anim = FuncAnimation(plt.gcf(), animate_plot, interval= 5000)
+    anim = FuncAnimation(plt.gcf(), animate_plot, interval= 60000)
     plt.show()
 
 
